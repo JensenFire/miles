@@ -566,7 +566,7 @@ def init_rollout_engines(args, pg, all_rollout_engines):
 
         seed_logical_engine_id = min(logical_engine_groups.keys())
         follower_logical_engine_ids = set(logical_engine_groups.keys()) - {seed_logical_engine_id}
-        seed_engine_id = seed_logical_engine_id[0]
+        seed_engine_id = seed_logical_engine_id if isinstance(seed_logical_engine_id, int) else seed_logical_engine_id[0]
         seed_ranks = logical_engine_groups[seed_engine_id]
 
         assert (
