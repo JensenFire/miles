@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 
 from ..megatron_to_hf import convert_to_hf
-from .common import all_gather_param, expert_named_params_and_buffers, non_expert_named_params_and_buffers
+from .common import all_gather_param, collect_named_tensors_for_weight_transfer
 
 
 class BucketedWeightGatherMixin:
@@ -22,7 +22,7 @@ class BucketedWeightGatherMixin:
         buffer_size = 0
         converted_named_tensors: list[tuple[str, torch.Tensor]] = []
 
-        for name, param in non_expert_named_params_and_buffers(self.args, self.model):
+        for name, param in collect_named_tensors_for_weight_transfer(self.args, self.model, is_expert=False):
             param = all_gather_param(self.args, name, param)
             if not self._is_source:
                 continue
@@ -52,7 +52,7 @@ class BucketedWeightGatherMixin:
         buffer_size = 0
         named_tensors: list[tuple[str, torch.Tensor]] = []
 
-        for name, param in expert_named_params_and_buffers(self.args, self.model):
+        for name, param in collect_named_tensors_for_weight_transfer(self.args, self.model, is_expert=True):
             param = all_gather_param(self.args, name, param)
             param_size = param.numel() * param.element_size()
             if (
