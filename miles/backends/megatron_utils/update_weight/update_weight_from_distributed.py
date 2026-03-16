@@ -91,9 +91,9 @@ class UpdateWeightFromDistributed(BucketedWeightGatherMixin):
         dist.barrier(group=get_gloo_group())
 
         pbar = tqdm(desc=f"[{self._group_name}] Update weights", total=0) if self._is_pp_src_rank else None
-        self._gather_and_convert_non_expert_weights(self._nccl_weight_transfer, pbar)
+        self._gather_and_convert_non_expert_weights(self._nccl_update_weight, pbar)
         dist.barrier(group=get_gloo_group())
-        self._gather_and_convert_expert_weights(self._nccl_weight_transfer, pbar)
+        self._gather_and_convert_expert_weights(self._nccl_update_weight, pbar)
         dist.barrier(group=get_gloo_group())
 
         if dist.get_rank() == 0:
@@ -110,7 +110,7 @@ class UpdateWeightFromDistributed(BucketedWeightGatherMixin):
             ray.get([engine.continue_generation.remote() for engine in self.rollout_engines])
         dist.barrier(group=get_gloo_group())
 
-    def _nccl_weight_transfer(
+    def _nccl_update_weight(
         self, converted_named_tensors: list[tuple[str, torch.Tensor]], pbar: tqdm | None = None
     ) -> None:
         """Lock → broadcast → clear → unlock. Lock prevents NCCL deadlock."""
