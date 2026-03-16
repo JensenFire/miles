@@ -268,5 +268,5 @@ def collect_named_tensors_for_weight_transfer(
         convert_to_global_name,
         translate_gpu_to_cpu,
     ):
-        if (".experts." not in name and not is_expert) or (".experts." in name and is_expert):
+        if is_expert == (".experts." in name):
             yield name, tensor
