@@ -38,7 +38,7 @@ class BucketedWeightGatherMixin:
         for name, param in collect_named_tensors_for_weight_transfer(self.args, self.model, is_expert=False):
             param = all_gather_param(self.args, name, param)
             if not self._is_pp_src_rank:
-                return
+                continue
 
             param_size = param.numel() * param.element_size()
             if buffer_size + param_size > self.args.update_weight_buffer_size:
