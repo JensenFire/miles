@@ -91,9 +91,9 @@ class UpdateWeightFromDistributed(BucketedWeightGatherMixin):
         dist.barrier(group=get_gloo_group())
 
         pbar = tqdm(desc=f"[{self._group_name}] Update weights", total=0) if self._is_pp_src_rank else None
-        self._gather_and_convert_non_expert_weights(self._nccl_update_weight, pbar)
+        self._gather_and_update_non_expert_weights(self._nccl_update_weight, pbar)
         dist.barrier(group=get_gloo_group())
-        self._gather_and_convert_expert_weights(self._nccl_update_weight, pbar)
+        self._gather_and_update_expert_weights(self._nccl_update_weight, pbar)
         dist.barrier(group=get_gloo_group())
 
         if dist.get_rank() == 0:
