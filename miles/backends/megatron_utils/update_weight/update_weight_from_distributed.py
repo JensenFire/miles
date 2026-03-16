@@ -6,6 +6,7 @@ from collections.abc import Callable, Mapping, Sequence
 import ray
 import torch
 import torch.distributed as dist
+import tqdm
 from megatron.core import mpu
 from ray import ObjectRef
 from ray.actor import ActorHandle
@@ -108,8 +109,11 @@ class UpdateWeightFromDistributed(BucketedWeightGatherMixin):
             ray.get([engine.continue_generation.remote() for engine in self.rollout_engines])
         dist.barrier(group=get_gloo_group())
 
-    def _nccl_weight_transfer(self, converted_named_tensors: list[tuple[str, torch.Tensor]]) -> None:
+    def _nccl_weight_transfer(
+        self, converted_named_tensors: list[tuple[str, torch.Tensor]], pbar: tqdm | None = None
+    ) -> None:
         """Lock → broadcast → clear → unlock. Lock prevents NCCL deadlock."""
+        # lock the rollout engines to prevent dead lock on broadcast.
         while not ray.get(self.rollout_engine_lock.acquire.remote()):
             time.sleep(0.1)
         refs = update_weights_from_distributed(
@@ -122,6 +126,8 @@ class UpdateWeightFromDistributed(BucketedWeightGatherMixin):
         ray.get(refs)
         converted_named_tensors.clear()
         ray.get(self.rollout_engine_lock.release.remote())
+        if pbar:
+            pbar.update(1)
 
 
 def connect_rollout_engines_from_distributed(

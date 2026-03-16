@@ -11,14 +11,23 @@ from .common import all_gather_param, collect_named_tensors_for_weight_transfer
 
 
 class BucketedWeightGatherMixin:
-    """Mixin providing bucketed TP/EP all-gather and HF format conversion."""
+    """Mixin providing bucketed TP/EP all-gather and HF format conversion.
+
+    Requires the consuming class to set:
+        self.args: Namespace with update_weight_buffer_size (as the bucket size).
+        self.model: Sequence[torch.nn.Module] (Megatron model chunks).
+        self.model_name: str (for HF conversion).
+        self.quantization_config: dict | None.
+        self._is_source: bool (whether this rank produces weights).
+    """
 
     def _gather_and_convert_non_expert_weights(
         self,
-        bucket_weight_transfer: Callable[[list[tuple[str, torch.Tensor]]], None],
+        bucket_weight_transfer: Callable[[list[tuple[str, torch.Tensor]], tqdm | None], None],
+        pbar: tqdm | None = None,
     ) -> None:
         """Bucketed TP all-gather + HF conversion for non-expert parameters."""
-        pbar = tqdm(desc="[Update Weights]", total=0) if self._is_source else None
+
         buffer_size = 0
         converted_named_tensors: list[tuple[str, torch.Tensor]] = []
 
@@ -29,26 +38,22 @@ class BucketedWeightGatherMixin:
 
             param_size = param.numel() * param.element_size()
             if buffer_size + param_size > self.args.update_weight_buffer_size:
-                bucket_weight_transfer(converted_named_tensors)
+                bucket_weight_transfer(converted_named_tensors, pbar)
                 converted_named_tensors = []
                 buffer_size = 0
-                if pbar:
-                    pbar.update(1)
 
             converted_named_tensors += convert_to_hf(self.args, self.model_name, name, param, self.quantization_config)
             buffer_size += param_size
 
         if converted_named_tensors:
-            bucket_weight_transfer(converted_named_tensors)
-            if pbar:
-                pbar.update(1)
+            bucket_weight_transfer(converted_named_tensors, pbar)
 
     def _gather_and_convert_expert_weights(
         self,
-        bucket_weight_transfer: Callable[[list[tuple[str, torch.Tensor]]], None],
+        bucket_weight_transfer: Callable[[list[tuple[str, torch.Tensor]], tqdm | None], None],
+        pbar: tqdm | None = None,
     ) -> None:
         """Bucketed TP + EP all-gather + HF conversion for expert parameters."""
-        pbar = tqdm(desc="[Update Expert Weights]", total=0) if self._is_source else None
         buffer_size = 0
         named_tensors: list[tuple[str, torch.Tensor]] = []
 
@@ -58,7 +63,7 @@ class BucketedWeightGatherMixin:
             if (
                 buffer_size + param_size
             ) * mpu.get_expert_model_parallel_world_size() > self.args.update_weight_buffer_size and named_tensors:
-                self._handle_expert_bucket(named_tensors, bucket_weight_transfer, pbar)
+                self._ep_allgather_convert_expert_bucket(named_tensors, bucket_weight_transfer, pbar)
                 named_tensors = []
                 buffer_size = 0
 
@@ -66,12 +71,12 @@ class BucketedWeightGatherMixin:
             buffer_size += param_size
 
         if named_tensors:
-            self._handle_expert_bucket(named_tensors, bucket_weight_transfer, pbar)
+            self._ep_allgather_convert_expert_bucket(named_tensors, bucket_weight_transfer, pbar)
 
-    def _handle_expert_bucket(
+    def _ep_allgather_convert_expert_bucket(
         self,
         named_tensors: list[tuple[str, torch.Tensor]],
-        bucket_weight_transfer: Callable[[list[tuple[str, torch.Tensor]]], None],
+        bucket_weight_transfer: Callable[[list[tuple[str, torch.Tensor]], tqdm | None], None],
         pbar: tqdm | None,
     ) -> None:
 
@@ -110,6 +115,4 @@ class BucketedWeightGatherMixin:
         for name, param in flat_gathered:
             converted_hf_tensors += convert_to_hf(self.args, self.model_name, name, param, self.quantization_config)
 
-        bucket_weight_transfer(converted_hf_tensors)
-        if pbar:
-            pbar.update(1)
+        bucket_weight_transfer(converted_hf_tensors, pbar)
