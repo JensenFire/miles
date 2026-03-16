@@ -6,10 +6,10 @@ from collections.abc import Callable, Mapping, Sequence
 import ray
 import torch
 import torch.distributed as dist
-import tqdm
 from megatron.core import mpu
 from ray import ObjectRef
 from ray.actor import ActorHandle
+from tqdm import tqdm
 
 from miles.utils.distributed_utils import get_gloo_group, init_process_group
 
