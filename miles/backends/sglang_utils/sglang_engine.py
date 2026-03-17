@@ -272,6 +272,32 @@ class SGLangEngine(RayActor):
             "update_weights_from_tensor",
             payload,
         )
+    
+    def get_remote_instance_transfer_engine_info(self, rank: int):
+        response = requests.get(
+            f"http://{self.server_host}:{self.server_port}/get_remote_instance_transfer_engine_info",
+            params={"rank": rank},
+            timeout=5.0,
+        )
+        response.raise_for_status()
+        return response.json()["remote_instance_transfer_engine_info"]
+
+    def get_parallelism_info(self, rank: int):
+        response = requests.get(
+            f"http://{self.server_host}:{self.server_port}/parallelism_config",
+            params={"rank": rank},
+            timeout=5.0,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_server_info(self):
+        response = requests.get(
+            f"http://{self.server_host}:{self.server_port}/server_info",
+            timeout=5.0,
+        )
+        response.raise_for_status()
+        return response.json()
 
     def load_lora_adapter_from_tensors(
         self,
