@@ -11,8 +11,7 @@ Uses --debug-rollout-only to only start sglang rollout engines (skip training).
 Requirements: 2 GPUs on a single machine
 
 Usage:
-    python test_rfork_loading.py                 # prepare + run
-    python test_rfork_loading.py --skip-prepare  # skip model download
+    python test_rfork_loading.py
 """
 
 import os
@@ -97,13 +96,5 @@ def execute():
 
 if __name__ == "__main__":
     import argparse
-
     parser = argparse.ArgumentParser()
-    parser.add_argument("--skip-prepare", action="store_true", help="Skip model/dataset download")
-    args = parser.parse_args()
-
-    if not args.skip_prepare:
-        prepare()
-    for proxy_var in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"):
-        os.environ.pop(proxy_var, None)
     execute()
