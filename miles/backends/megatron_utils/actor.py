@@ -39,6 +39,7 @@ from .parallel import create_megatron_parallel_state
 from .replay_utils import get_register_replay_list_func
 from .update_weight.common import named_params_and_buffers
 from .update_weight.update_weight_from_distributed import UpdateWeightFromDistributed
+from .update_weight.update_weight_from_rdma import UpdateWeightFromRDMA
 from .update_weight.update_weight_from_tensor import UpdateWeightFromTensor
 
 logging.getLogger("megatron").setLevel(logging.WARNING)
@@ -60,9 +61,7 @@ class MegatronTrainRayActor(TrainRayActor):
 
         init(args)
 
-        self._is_main_rank = is_megatron_main_rank()
-
-        if self._is_main_rank:
+        if is_megatron_main_rank():
             init_tracking(args, primary=False)
 
         self.prof = TrainProfiler(args)
@@ -139,7 +138,13 @@ class MegatronTrainRayActor(TrainRayActor):
         if self.args.vocab_size is None:
             self.args.vocab_size = self.tokenizer.vocab_size
 
-        update_weight_cls = UpdateWeightFromTensor if self.args.colocate else UpdateWeightFromDistributed
+        if self.args.colocate:
+            update_weight_cls = UpdateWeightFromTensor
+        else:
+            if self.args.update_weight_transfer_mode == "nccl":
+                update_weight_cls = UpdateWeightFromDistributed
+            else:
+                update_weight_cls = UpdateWeightFromRDMA
         self.weight_updater = update_weight_cls(
             self.args,
             self.model,
@@ -180,9 +185,6 @@ class MegatronTrainRayActor(TrainRayActor):
         torch_memory_saver.pause()
 
         print_memory("after offload model")
-
-        if self._is_main_rank and hasattr(self, "_last_rollout_id"):
-            log_cpu_memory(self._last_rollout_id, self.args, "after_offload_train")
 
     @timer
     def wake_up(self) -> None:
