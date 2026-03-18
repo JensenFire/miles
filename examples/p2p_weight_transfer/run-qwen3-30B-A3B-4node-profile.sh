@@ -203,7 +203,7 @@ run_mode() {
         --actor-num-nodes ${NUM_TRAIN_NODES}
         --actor-num-gpus-per-node ${GPUS_PER_NODE}
         --update-weight-buffer-size ${BUFFER_SIZE}
-        --update-weight-transfer-mode  ${MODE}
+        --update-weight-transfer-mode ${MODE}
     )
 
     # --- Worker nodes sleep to let head node start first ---
@@ -232,7 +232,7 @@ run_mode() {
     \"RAY_DEBUG\": \"1\",
     \"PYTHONPATH\": \"/root/Megatron-LM/\",
     \"CUDA_DEVICE_MAX_CONNECTIONS\": \"1\",
-    \"NCCL_NVLS_ENABLE\": \"${NCCL_NVLS_VAL}\",
+    \"NCCL_NVLS_ENABLE\": \"${NCCL_NVLS_VAL}\"
   }
 }"
 
