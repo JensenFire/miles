@@ -16,19 +16,6 @@
 #   bash run-qwen3-30B-A3B-4node-profile.sh nccl 0 10.0.0.1   # head node
 #   bash run-qwen3-30B-A3B-4node-profile.sh nccl 1 10.0.0.1   # worker node
 
-# ---------------------------------------------------------------------------
-# Cleanup stale processes
-# ---------------------------------------------------------------------------
-pkill -9 sglang
-sleep 3
-ray stop --force
-pkill -9 ray
-pkill -9 python
-sleep 3
-pkill -9 ray
-pkill -9 python
-pkill -9 redis
-
 set -ex
 
 export PYTHONBUFFERED=16
@@ -47,6 +34,21 @@ fi
 MODE="$1"              # nccl | rdma
 NODE_RANK="$2"         # 0 = head, 1..N = worker
 HEAD_NODE_IP="$3"      # head node IP address
+
+# ---------------------------------------------------------------------------
+# Cleanup stale processes (head node only)
+# ---------------------------------------------------------------------------
+if [ "$NODE_RANK" -eq 0 ]; then
+    pkill -9 sglang || true
+    sleep 3
+    ray stop --force || true
+    pkill -9 ray || true
+    pkill -9 python || true
+    sleep 3
+    pkill -9 ray || true
+    pkill -9 python || true
+    pkill -9 redis || true
+fi
 
 # ---------------------------------------------------------------------------
 # Fixed config
@@ -100,10 +102,6 @@ MODES=("$MODE")
 # ---------------------------------------------------------------------------
 run_mode() {
     local mode="$1"
-    local is_rdma=0
-    if [ "$mode" = "rdma" ]; then
-        is_rdma=1
-    fi
 
     # --- Checkpoint ---
     CKPT_ARGS=(
@@ -192,19 +190,9 @@ run_mode() {
         --sglang-enable-dp-attention
         --sglang-enable-dp-lm-head
     )
-    if [ "$is_rdma" -eq 1 ]; then
-        SGLANG_ARGS+=(--sglang-remote-instance-weight-loader-start-seed-via-transfer-engine)
-    fi
-    if [ "$SKIP_VALIDATION" -eq 1 ]; then
-        SGLANG_ARGS+=(--sglang-load-format dummy)
-    fi
 
     # --- Misc ---
-    if [ "$is_rdma" -eq 1 ]; then
-        BUFFER_SIZE=$(python3 -c "print(int(${BUCKET_SIZE_GB} * 1024 * 1024 * 1024))")
-    else
-        BUFFER_SIZE=$((4 * 1024 * 1024 * 1024))
-    fi
+    BUFFER_SIZE=$((1 * 1024 * 1024 * 1024))
 
     MISC_ARGS=(
         --attention-dropout 0.0
@@ -215,14 +203,8 @@ run_mode() {
         --actor-num-nodes ${NUM_TRAIN_NODES}
         --actor-num-gpus-per-node ${GPUS_PER_NODE}
         --update-weight-buffer-size ${BUFFER_SIZE}
-        "--update-weight-transfer-mode rdma "
+        --update-weight-transfer-mode  ${MODE}
     )
-    if [ "$SKIP_VALIDATION" -ne 1 ]; then
-        MISC_ARGS+=(--check-weight-update-equal)
-    fi
-    if [ "$is_rdma" -eq 1 ]; then
-        MISC_ARGS+=(--update-weight-transfer-mode rdma)
-    fi
 
     # --- Worker nodes sleep to let head node start first ---
     if [ "$NODE_RANK" -gt 0 ]; then
@@ -230,14 +212,10 @@ run_mode() {
     fi
 
     # --- MC transfer timeout ---
-    MC_TRANSFER_TIMEOUT=30
+    MC_TRANSFER_TIMEOUT=300
 
-    # --- NCCL NVLS ---
-    if [ "$ENABLE_NCCL_NVLS" -eq 1 ]; then
-        NCCL_NVLS_VAL="1"
-    else
-        NCCL_NVLS_VAL="0"
-    fi
+    NCCL_NVLS_VAL="1"
+
 
     # --- Launch Ray ---
     if [ "$NODE_RANK" -eq 0 ]; then
@@ -246,7 +224,7 @@ run_mode() {
     else
         ray start --address="${HEAD_NODE_IP}:6379" --num-gpus ${GPUS_PER_NODE} --disable-usage-stats
     fi
-    
+
     # --- Build runtime env JSON ---
     RUNTIME_ENV_JSON="{
   \"env_vars\": {
@@ -255,7 +233,6 @@ run_mode() {
     \"PYTHONPATH\": \"/root/Megatron-LM/\",
     \"CUDA_DEVICE_MAX_CONNECTIONS\": \"1\",
     \"NCCL_NVLS_ENABLE\": \"${NCCL_NVLS_VAL}\",
-    \"MILES_LOG_DIR\": \"${run_log_dir}\"
   }
 }"
 
