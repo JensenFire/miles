@@ -3,7 +3,8 @@ import os
 from pathlib import Path
 
 import miles.utils.external_utils.command_utils as U
-
+import typer
+from transformers import AutoTokenizer
 
 USE_FP8_ROLLOUT = U.get_bool_env_var("MILES_TEST_USE_FP8_ROLLOUT", "false")
 
@@ -56,6 +57,9 @@ def prepare():
             f"--save-dir {MODEL_DIR}/{MODEL_NAME}_fp8 "
             "--strategy block --block-size 128 128"
         )
+
+    tokenizer = AutoTokenizer.from_pretrained(f"/root/models/{MODEL_NAME}/", trust_remote_code=True)
+    print("Tokenizer loaded, vocab size:", tokenizer.vocab_size)
 
     # For 4-layer model: use 4 GPUs, TP=1, PP=1, EP=1, ETP=1
     U.convert_checkpoint(
