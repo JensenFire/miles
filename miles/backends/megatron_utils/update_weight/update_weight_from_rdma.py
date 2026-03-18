@@ -75,6 +75,17 @@ class UpdateWeightFromRDMA(UpdateWeightFromDistributed):
     def _is_source(self):
         return self.transfer_plan._gathered_dp_rank < self.transfer_plan._rollout_num_gpus
 
+    def _gather_and_update_expert_weights(self, update_bucket_weight_func, pbar=None):
+        """Wait for all background RDMA writes to complete here."""
+        super()._gather_and_update_expert_weights(update_bucket_weight_func, pbar)
+        if not self._is_source:
+            return
+        self.transfer_manager.wait_transfers()
+        self._update_pending = {}
+        if self._staged_tensors:
+            self._staged_tensors.clear()
+        logger.info("[RDMA-Shared] All transfers complete")
+
     def _pause_and_prepare_engines(self):
         """Register shared CPU pinned memory with RDMA on first call."""
         super()._pause_and_prepare_engines()
@@ -318,13 +329,3 @@ class UpdateWeightFromRDMA(UpdateWeightFromDistributed):
         ret = self._engine.batch_transfer_sync_write(session_id, source_ptrs, target_ptrs, source_lens)
         if ret < 0:
             logger.error(f"[RDMA-Shared] Transfer failed for session {session_id}, error: {ret}")
-
-    def finish_transfer_task(self) -> None:
-        """Wait for all background RDMA writes to complete."""
-        if not self._is_source:
-            return
-        self.transfer_manager.wait_transfers()
-        self._update_pending = {}
-        if self._staged_tensors:
-            self._staged_tensors.clear()
-        logger.info("[RDMA-Shared] All transfers complete")
