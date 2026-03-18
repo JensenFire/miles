@@ -57,15 +57,16 @@ def prepare():
             "--strategy block --block-size 128 128"
         )
 
+    # For 4-layer model: use 4 GPUs, TP=1, PP=1, EP=1, ETP=1
     U.convert_checkpoint(
         model_name=MODEL_NAME,
         megatron_model_type=MODEL_TYPE,
-        num_gpus_per_node=8,
+        num_gpus_per_node=4,
         extra_args=(
-            "--tensor-model-parallel-size 8 "
+            "--tensor-model-parallel-size 1 "
             "--expert-tensor-parallel-size 1 "
             "--pipeline-model-parallel-size 1 "
-            "--expert-model-parallel-size 8 "
+            "--expert-model-parallel-size 1 "
         ),
         dir_dst=MODEL_DIR,
     )
