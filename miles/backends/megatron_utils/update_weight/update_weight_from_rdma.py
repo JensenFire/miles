@@ -147,6 +147,7 @@ class UpdateWeightFromRDMA(UpdateWeightFromDistributed):
         self.rollout_engine_lock = rollout_engine_lock
 
         if self._is_source:
+            self._group_name = f"miles-_rdma_{self.transfer_plan._gathered_dp_rank}"
             targets = self.transfer_plan.plan_p2p()
             (
                 self.remote_weight_infos_by_session_id,
