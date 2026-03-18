@@ -107,7 +107,7 @@ def execute():
         "--tensor-model-parallel-size 4 "
         "--sequence-parallel "
         "--pipeline-model-parallel-size 1 "
-        "--context-parallel-size 2 "
+        "--context-parallel-size 1 "
         "--expert-model-parallel-size 4 "
         "--expert-tensor-parallel-size 1 "
         "--recompute-granularity full "
@@ -184,7 +184,8 @@ def execute():
         # "--colocate "
         "--dump-details /root/shared_data/dump_details "
         "--disable-weights-backuper "
-        f"--check-weight-update-equal "
+        "--check-weight-update-equal "
+        "--update-weight-transfer-mode rdma "
     )
 
     train_args = (
