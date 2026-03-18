@@ -32,12 +32,14 @@ hf_download_dataset('zhuzilin/aime-2024')
 # ---------------------------------------------------------------------------
 # Convert checkpoint
 # ---------------------------------------------------------------------------
+mkdir -p /root/multinode
 python3 -c "
 from miles.utils.external_utils.command_utils import convert_checkpoint
 convert_checkpoint(
     model_name='${MODEL_NAME}',
     megatron_model_type='${MODEL_TYPE}',
     num_gpus_per_node=${GPUS_PER_NODE},
+    dir_dst='/root/multinode',
 )
 "
 

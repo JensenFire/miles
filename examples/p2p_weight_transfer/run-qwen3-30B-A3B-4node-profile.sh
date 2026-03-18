@@ -204,6 +204,7 @@ run_mode() {
         --actor-num-gpus-per-node ${GPUS_PER_NODE}
         --update-weight-buffer-size ${BUFFER_SIZE}
         --update-weight-transfer-mode ${MODE}
+        --check-weight-update-equal 
     )
 
     # --- Worker nodes sleep to let head node start first ---
