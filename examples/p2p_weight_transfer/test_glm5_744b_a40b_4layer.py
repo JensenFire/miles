@@ -180,10 +180,11 @@ def execute():
         f"--update-weight-buffer-size {1 * 1024 ** 3} "
         "--actor-num-nodes 1 "
         "--actor-num-gpus-per-node 4 "
-        "--num-gpus-per-node 4 "
+        # "--num-gpus-per-node 4 "
         # "--colocate "
         "--dump-details /root/shared_data/dump_details "
         "--disable-weights-backuper "
+        f"--check-weight-update-equal "
     )
 
     train_args = (
