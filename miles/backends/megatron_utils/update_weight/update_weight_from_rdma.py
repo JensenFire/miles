@@ -18,15 +18,21 @@ from tqdm import tqdm
 
 from miles.utils.distributed_utils import get_gloo_group
 
-from .bucketed_weight_gather_mixin import BucketedWeightGatherMixin
-from .rdma_transfer_utils import (EngineRankInfo, RemoteWeightInfo, RDMATransferManager, RemoteTransferPlan, 
-                                  create_transfer_engine, query_remote_weight_infos, register_cpu_memory_region)
-from .update_weight_from_distributed import post_process_weights
+from .rdma_transfer_utils import (
+    EngineRankInfo,
+    RDMATransferManager,
+    RemoteTransferPlan,
+    RemoteWeightInfo,
+    create_transfer_engine,
+    query_remote_weight_infos,
+    register_cpu_memory_region,
+)
+from .update_weight_from_distributed import UpdateWeightFromDistributed
 
 logger = logging.getLogger(__name__)
 
 
-class UpdateWeightFromRDMA(BucketedWeightGatherMixin):
+class UpdateWeightFromRDMA(UpdateWeightFromDistributed):
     """RDMA weight transfer using BucketedWeightGatherMixin for bucketed all-gather + HF conversion,
     and a single set of shared CPU pinned buffers for RDMA writes.
 
@@ -47,11 +53,14 @@ class UpdateWeightFromRDMA(BucketedWeightGatherMixin):
         quantization_config: dict[str, int | str | list[str]] | None,
         is_lora: bool = False,
     ) -> None:
-        self.args = args
-        self.model = model
-        self.model_name = model_name
-        self.quantization_config = quantization_config
-        self.weight_version = 0
+        super().__init__(
+            args,
+            model,
+            weights_getter,
+            model_name=model_name,
+            quantization_config=quantization_config,
+            is_lora=is_lora,
+        )
         self.transfer_plan = RemoteTransferPlan(args, model)
         self._is_source = self.transfer_plan._gathered_dp_rank < self.transfer_plan._rollout_num_gpus
         self.global_rank = dist.get_rank(group=get_gloo_group())
@@ -96,7 +105,11 @@ class UpdateWeightFromRDMA(BucketedWeightGatherMixin):
                 )
                 server_args = self.session_id_to_server_args[session_id]
 
-                model_replica = self.create_cpu_replica(parallelism_config, self.args.hf_checkpoint, server_args, )
+                model_replica = self.create_cpu_replica(
+                    parallelism_config,
+                    self.args.hf_checkpoint,
+                    server_args,
+                )
                 if first_engine_rank:
                     self._shared_params_dict = dict(model_replica.named_parameters())
                     self._shared_param_mapper = ParameterMapper.from_model(model_replica)
@@ -142,56 +155,20 @@ class UpdateWeightFromRDMA(BucketedWeightGatherMixin):
                 cpu_data = param.data.to("cpu", non_blocking=True).pin_memory()
                 param.data = cpu_data
             torch.cuda.synchronize()
-        else: 
+        else:
             for name, param in model.named_parameters():
                 if name not in self._shared_params_dict:
                     logger.warning(f"[RDMA-Shared] Parameter {name} not found in shared buffers, skipping")
                     continue
                 param.data = self._shared_params_dict[name]
-        
+
         torch.cuda.empty_cache()
 
         return model
 
-    @torch.no_grad()
-    def update_weights(self) -> None:
-        """Use BucketedWeightGatherMixin for bucketed all-gather + HF conversion,
-        with RDMA transfer as the bucket callback."""
-        self.weight_version += 1
-
-        if dist.get_rank() == 0:
-            ray.get([engine.pause_generation.remote() for engine in self.rollout_engines])
-            ray.get([engine.flush_cache.remote() for engine in self.rollout_engines])
-
-            # int4/fp4 pre_process
-            if self.quantization_config and self.quantization_config["quant_method"] in ["compressed-tensors"]:
-                post_process_weights(
-                    restore_weights_before_load=True,
-                    post_process_quantization=False,
-                    rollout_engines=self.rollout_engines,
-                )
-
-        dist.barrier(group=get_gloo_group())
-    
-        self.on_transfer_start()
-        self._gather_and_convert_non_expert_weights(self._update_bucket_weights_from_remote)     
-        self._gather_and_convert_expert_weights(self._update_bucket_weights_from_remote)
-        self.finish_transfer_task()
-
-        dist.barrier(group=get_gloo_group())
-        if dist.get_rank() == 0:
-            # int4/fp4 post_process
-            if self.quantization_config and self.quantization_config["quant_method"] in ["compressed-tensors"]:
-                post_process_weights(
-                    restore_weights_before_load=False,
-                    post_process_quantization=True,
-                    rollout_engines=self.rollout_engines,
-                )
-            self.leader_post_update()
-        dist.barrier(group=get_gloo_group())
-
-    def on_transfer_start(self) -> None:
+    def _pause_and_prepare_engines(self):
         """Register shared CPU pinned memory with RDMA on first call."""
+        super()._pause_and_prepare_engines()
         if not self._is_source:
             return
 
@@ -199,16 +176,17 @@ class UpdateWeightFromRDMA(BucketedWeightGatherMixin):
             self._weight_memory_registry = register_cpu_memory_region(self._shared_params_dict, self._engine)
         self._model_registered = True
 
-    def leader_post_update(self) -> None:
-        ray.get([engine.continue_generation.remote() for engine in self.rollout_engines])
-        ray.get(
-            [
-                engine.update_weight_version.remote(weight_version=str(self.weight_version))
-                for engine in self.rollout_engines
-            ]
-        )
+    def _finalize_and_resume_engines(self):
+        if dist.get_rank() == 0:
+            ray.get(
+                [
+                    engine.update_weight_version.remote(weight_version=str(self.weight_version))
+                    for engine in self.rollout_engines
+                ]
+            )
+        super()._finalize_and_resume_engines()
 
-    def _update_bucket_weights_from_remote(
+    def _update_weight_implementation(
         self, converted_named_tensors: list[tuple[str, torch.Tensor]], pbar: tqdm | None = None
     ) -> None:
         """Stage incoming tensors; when all shards for a param are collected,
@@ -301,9 +279,7 @@ class UpdateWeightFromRDMA(BucketedWeightGatherMixin):
 
         return transfer_ready_params, ready_hf_tensors
 
-    def _do_rdma_write_one_session(
-        self, remote_session: RemoteWeightInfo, names: list[str]
-    ) -> None:
+    def _do_rdma_write_one_session(self, remote_session: RemoteWeightInfo, names: list[str]) -> None:
         """RDMA write from shared CPU pinned buffers to a single remote session.
 
         Used by the parallelized submission path where each session within an
