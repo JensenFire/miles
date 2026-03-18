@@ -132,7 +132,6 @@ class UpdateWeightFromRDMA(UpdateWeightFromDistributed):
                     for remote_session in info.remote_weight_infos:
                         self.transfer_manager.submit(
                             self._do_rdma_write_one_session,
-                            info,
                             remote_session,
                             transfer_ready_params,
                         )
@@ -140,7 +139,6 @@ class UpdateWeightFromRDMA(UpdateWeightFromDistributed):
                     futures = [
                         self.transfer_manager.submit_returning_future(
                             self._do_rdma_write_one_session,
-                            info,
                             remote_session,
                             transfer_ready_params,
                         )
