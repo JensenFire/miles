@@ -18,9 +18,9 @@ from tqdm import tqdm
 
 from miles.utils.distributed_utils import get_gloo_group
 
-from .rdma_transfer_utils import (
+from .p2p_transfer_utils import (
     EngineRankInfo,
-    RDMATransferManager,
+    P2PTransferManager,
     RemoteTransferPlan,
     RemoteWeightInfo,
     create_transfer_engine,
@@ -32,13 +32,13 @@ from .update_weight_from_distributed import UpdateWeightFromDistributed
 logger = logging.getLogger(__name__)
 
 
-class UpdateWeightFromRDMA(UpdateWeightFromDistributed):
-    """RDMA weight transfer using BucketedWeightGatherMixin for bucketed all-gather + HF conversion,
-    and a single set of shared CPU pinned buffers for RDMA writes.
+class UpdateWeightP2P(UpdateWeightFromDistributed):
+    """P2P weight transfer using BucketedWeightGatherMixin for bucketed all-gather + HF conversion,
+    and a single set of shared CPU pinned buffers for P2P writes.
 
     Compute transfer_ready_params once (same for all engine ranks)
     For each engine rank:
-        load_weights(shared buffer) → RDMA write
+        load_weights(shared buffer) → P2P write
         where the last rank's write is submitted to a background thread
     wait_transfers() at finish to collect all background writes
     """
@@ -68,15 +68,15 @@ class UpdateWeightFromRDMA(UpdateWeightFromDistributed):
         self._update_pending: dict[str, int] = {}
 
         self._staged_tensors: dict[str, list[tuple[str, torch.Tensor]]] = {}
-        num_workers = getattr(args, "rdma_transfer_workers", 4)
-        self.transfer_manager = RDMATransferManager(num_workers=num_workers)
+        num_workers = getattr(args, "p2p_transfer_workers", 4)
+        self.transfer_manager = P2PTransferManager(num_workers=num_workers)
 
     @property
     def _is_source(self):
         return self.transfer_plan._gathered_dp_rank < self.transfer_plan._rollout_num_gpus
 
     def _gather_and_update_expert_weights(self, update_bucket_weight_func, pbar=None):
-        """Wait for all background RDMA writes to complete here."""
+        """Wait for all background P2P writes to complete here."""
         super()._gather_and_update_expert_weights(update_bucket_weight_func, pbar)
         if not self._is_source:
             return
@@ -84,10 +84,10 @@ class UpdateWeightFromRDMA(UpdateWeightFromDistributed):
         self._update_pending = {}
         if self._staged_tensors:
             self._staged_tensors.clear()
-        logger.info("[RDMA-Shared] All transfers complete")
+        logger.info("[P2P-Shared] All transfers complete")
 
     def _pause_and_prepare_engines(self):
-        """Register shared CPU pinned memory with RDMA on first call."""
+        """Register shared CPU pinned memory with P2P on first call."""
         super()._pause_and_prepare_engines()
         if not self._is_source:
             return
@@ -110,7 +110,7 @@ class UpdateWeightFromRDMA(UpdateWeightFromDistributed):
         self, converted_named_tensors: list[tuple[str, torch.Tensor]], pbar: tqdm | None = None
     ) -> None:
         """Stage incoming tensors; when all shards for a param are collected,
-        load into shared buffer and RDMA-write per engine rank.
+        load into shared buffer and P2P-write per engine rank.
 
         Only calls load_weights() with complete accumulated tensors, preventing
         partial writes that would corrupt the shared buffer when different engine
@@ -131,14 +131,14 @@ class UpdateWeightFromRDMA(UpdateWeightFromDistributed):
                     # Last engine rank: fire-and-forget all sessions to background
                     for remote_session in info.remote_weight_infos:
                         self.transfer_manager.submit(
-                            self._do_rdma_write_one_session,
+                            self._do_p2p_write_one_session,
                             remote_session,
                             transfer_ready_params,
                         )
                 else:
                     futures = [
                         self.transfer_manager.submit_returning_future(
-                            self._do_rdma_write_one_session,
+                            self._do_p2p_write_one_session,
                             remote_session,
                             transfer_ready_params,
                         )
@@ -156,7 +156,7 @@ class UpdateWeightFromRDMA(UpdateWeightFromDistributed):
         self.rollout_engine_lock = rollout_engine_lock
 
         if self._is_source:
-            self._group_name = f"miles-rdma_{self.transfer_plan._gathered_dp_rank}"
+            self._group_name = f"miles-p2p_{self.transfer_plan._gathered_dp_rank}"
             targets = self.transfer_plan.plan_p2p()
             (
                 self.remote_weight_infos_by_session_id,
@@ -237,7 +237,7 @@ class UpdateWeightFromRDMA(UpdateWeightFromDistributed):
         else:
             for name, param in model.named_parameters():
                 if name not in self._shared_params_dict:
-                    logger.warning(f"[RDMA-Shared] Parameter {name} not found in shared buffers, skipping")
+                    logger.warning(f"[P2P-Shared] Parameter {name} not found in shared buffers, skipping")
                     continue
                 param.data = self._shared_params_dict[name]
 
@@ -293,11 +293,11 @@ class UpdateWeightFromRDMA(UpdateWeightFromDistributed):
 
         return transfer_ready_params, ready_hf_tensors
 
-    def _do_rdma_write_one_session(self, remote_session: RemoteWeightInfo, names: list[str]) -> None:
-        """RDMA write from shared CPU pinned buffers to a single remote session.
+    def _do_p2p_write_one_session(self, remote_session: RemoteWeightInfo, names: list[str]) -> None:
+        """P2P write from shared CPU pinned buffers to a single remote session.
 
         Used by the parallelized submission path where each session within an
-        engine rank is submitted as a separate task to RDMATransferManager.
+        engine rank is submitted as a separate task to P2PTransferManager.
         """
         source_ptrs, source_lens = [], []
         valid_names = []
@@ -322,9 +322,9 @@ class UpdateWeightFromRDMA(UpdateWeightFromDistributed):
                 target_ptrs.append(remote_session.weights_info[name][0])
 
         if len(target_ptrs) != len(source_ptrs):
-            logger.warning(f"[RDMA-Shared] Pointer count mismatch for session {session_id}")
+            logger.warning(f"[P2P-Shared] Pointer count mismatch for session {session_id}")
             return
 
         ret = self._engine.batch_transfer_sync_write(session_id, source_ptrs, target_ptrs, source_lens)
         if ret < 0:
-            logger.error(f"[RDMA-Shared] Transfer failed for session {session_id}, error: {ret}")
+            logger.error(f"[P2P-Shared] Transfer failed for session {session_id}, error: {ret}")

@@ -114,7 +114,7 @@ def execute(args: ScriptArgs):
         f"--actor-num-gpus-per-node {args.num_train_gpus} "
         f"--update-weight-buffer-size {1 * 1024 ** 3} "
         "--check-weight-update-equal "
-        "--update-weight-transfer-mode rdma "
+        "--update-weight-transfer-mode p2p "
     )
 
     train_args = (

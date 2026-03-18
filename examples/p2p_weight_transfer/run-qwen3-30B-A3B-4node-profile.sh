@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Multi-node (4-node) profiling script for Qwen3-30B-A3B with NCCL/RDMA weight transfer.
+# Multi-node (4-node) profiling script for Qwen3-30B-A3B with broadcasting/p2p weight transfer.
 #
 # Converted from: examples/p2p_weight_transfer/test_glm5_744b_a40b_4layer.py
 # Only the qwen3-30b model config is included.
@@ -8,13 +8,13 @@
 # Usage:
 #   bash run-qwen3-30B-A3B-4node-profile.sh <MODE> <NODE_RANK> <HEAD_NODE_IP>
 #
-#   MODE          : nccl | rdma
+#   MODE          : broadcast | p2p
 #   NODE_RANK     : 0 (head node) | 1,2,3 (worker nodes)
 #   HEAD_NODE_IP  : IP address of the head node
 #
 # Examples:
-#   bash run-qwen3-30B-A3B-4node-profile.sh nccl 0 10.0.0.1   # head node
-#   bash run-qwen3-30B-A3B-4node-profile.sh nccl 1 10.0.0.1   # worker node
+#   bash run-qwen3-30B-A3B-4node-profile.sh p2p 0 10.0.0.1   # head node
+#   bash run-qwen3-30B-A3B-4node-profile.sh p2p 1 10.0.0.1   # worker node
 
 set -ex
 
@@ -25,13 +25,13 @@ export PYTHONBUFFERED=16
 # ---------------------------------------------------------------------------
 if [ $# -lt 3 ]; then
     echo "Usage: $0 <MODE> <NODE_RANK> <HEAD_NODE_IP>"
-    echo "  MODE         : nccl | rdma"
+    echo "  MODE         : p2p | p2p"
     echo "  NODE_RANK    : 0 (head) | 1,2,3 (workers)"
     echo "  HEAD_NODE_IP : IP of the head node"
     exit 1
 fi
 
-MODE="$1"              # nccl | rdma
+MODE="$1"              # broadcast | p2p
 NODE_RANK="$2"         # 0 = head, 1..N = worker
 HEAD_NODE_IP="$3"      # head node IP address
 
@@ -98,7 +98,7 @@ MODES=("$MODE")
 
 
 # ---------------------------------------------------------------------------
-# Execute one mode (nccl or rdma)
+# Execute one mode (broadcast or p2p)
 # ---------------------------------------------------------------------------
 run_mode() {
     local mode="$1"
@@ -190,7 +190,7 @@ run_mode() {
         --sglang-enable-dp-attention
         --sglang-enable-dp-lm-head
     )
-    if [ "$mode" = "rdma" ]; then
+    if [ "$mode" = "p2p" ]; then
         SGLANG_ARGS+=(--sglang-remote-instance-weight-loader-start-seed-via-transfer-engine)
     fi
 
