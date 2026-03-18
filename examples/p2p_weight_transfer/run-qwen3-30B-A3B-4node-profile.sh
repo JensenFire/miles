@@ -190,6 +190,9 @@ run_mode() {
         --sglang-enable-dp-attention
         --sglang-enable-dp-lm-head
     )
+    if [ "$mode" = "rdma" ]; then
+        SGLANG_ARGS+=(--sglang-remote-instance-weight-loader-start-seed-via-transfer-engine)
+    fi
 
     # --- Misc ---
     BUFFER_SIZE=$((1 * 1024 * 1024 * 1024))
