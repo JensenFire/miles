@@ -141,7 +141,7 @@ def execute():
     # Single node, no PD: sglang_world_size=8, sglang_decode_max_bs=256
     sglang_args = (
         "--rollout-num-gpus-per-engine 4 "
-        "--rollout-num-gpus 4"
+        "--rollout-num-gpus 4 "
         "--sglang-mem-fraction-static 0.70 "
         # "--sglang-enable-dp-attention "
         "--sglang-ep-size 4 "
