@@ -45,7 +45,7 @@ def _process_glm_checkpoint():
 
 def prepare():
     U.exec_command(f"mkdir -p {MODEL_DIR} {DATA_DIR}")
-    U.exec_command(f"huggingface-cli download {MODEL_ORG}/{MODEL_NAME} --local-dir {MODEL_DIR}/{MODEL_NAME}")
+    U.exec_command(f"hf download {MODEL_ORG}/{MODEL_NAME} --local-dir {MODEL_DIR}/{MODEL_NAME}")
     U.hf_download_dataset("zhuzilin/dapo-math-17k", data_dir=DATA_DIR)
 
     _process_glm_checkpoint()
@@ -58,7 +58,7 @@ def prepare():
             "--strategy block --block-size 128 128"
         )
 
-    tokenizer = AutoTokenizer.from_pretrained(f"/root/models/{MODEL_NAME}/", trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(f"/root/models/GLM-5_4layer", trust_remote_code=True)
     print("Tokenizer loaded, vocab size:", tokenizer.vocab_size)
 
     # For 4-layer model: use 4 GPUs, TP=1, PP=1, EP=1, ETP=1
