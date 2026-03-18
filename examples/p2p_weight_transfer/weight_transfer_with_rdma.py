@@ -102,7 +102,7 @@ def execute(args: ScriptArgs):
         "--sglang-remote-instance-weight-loader-start-seed-via-transfer-engine "
     )
 
-    ci_args = "--ci-test "
+    # ci_args = "--ci-test "
 
     misc_args = (
         "--attention-dropout 0.0 "
@@ -125,7 +125,7 @@ def execute(args: ScriptArgs):
         f"{U.get_default_wandb_args(__file__)} "
         f"{perf_args} "
         f"{sglang_args} "
-        f"{ci_args} "
+        # f"{ci_args} "
         f"{misc_args} "
     )
 
