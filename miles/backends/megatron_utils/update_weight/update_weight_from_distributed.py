@@ -70,13 +70,8 @@ class UpdateWeightFromDistributed(BucketedWeightGatherMixin):
                 self.args, self._group_name, rollout_engines
             )
 
-    @torch.no_grad()
-    def update_weights(self) -> None:
-        """
-        Pause → flush → non-expert (TP) → expert (EP) → continue. Progress on PP source.
-        """
-        self.weight_version += 1
-
+    def _pause_and_prepare_engines(self) -> None:
+        """Pause rollout engines, flush cache, and run pre-process if needed."""
         if dist.get_rank() == 0:
             ray.get([engine.pause_generation.remote() for engine in self.rollout_engines])
             ray.get([engine.flush_cache.remote() for engine in self.rollout_engines])
@@ -88,14 +83,9 @@ class UpdateWeightFromDistributed(BucketedWeightGatherMixin):
                     post_process_quantization=False,
                     rollout_engines=self.rollout_engines,
                 )
-        dist.barrier(group=get_gloo_group())
 
-        pbar = tqdm(desc=f"[{self._group_name}] Update weights", total=0) if self._is_pp_src_rank else None
-        self._gather_and_update_non_expert_weights(self._nccl_update_weight, pbar)
-        dist.barrier(group=get_gloo_group())
-        self._gather_and_update_expert_weights(self._nccl_update_weight, pbar)
-        dist.barrier(group=get_gloo_group())
-
+    def _finalize_and_resume_engines(self) -> None:
+        """Run post-process if needed and resume rollout engines."""
         if dist.get_rank() == 0:
             # int4/fp4 post_process, mxfp8 post-process (swizzle MoE scales).
             if self.quantization_config and self.quantization_config["quant_method"] in [
@@ -108,9 +98,28 @@ class UpdateWeightFromDistributed(BucketedWeightGatherMixin):
                     rollout_engines=self.rollout_engines,
                 )
             ray.get([engine.continue_generation.remote() for engine in self.rollout_engines])
+
+    @torch.no_grad()
+    def update_weights(self) -> None:
+        """
+        Pause → flush → non-expert (TP) → expert (EP) → continue. Progress on PP source.
+        """
+        self.weight_version += 1
+
+        self._pause_and_prepare_engines()
         dist.barrier(group=get_gloo_group())
 
-    def _nccl_update_weight(
+        pbar = tqdm(desc=f"[{self._group_name}] Update weights", total=0) if self._is_pp_src_rank else None
+
+        self._gather_and_update_non_expert_weights(self._update_weight_implementation, pbar)
+        dist.barrier(group=get_gloo_group())
+        self._gather_and_update_expert_weights(self._update_weight_implementation, pbar)
+        dist.barrier(group=get_gloo_group())
+
+        self._finalize_and_resume_engines()
+        dist.barrier(group=get_gloo_group())
+
+    def _update_weight_implementation(
         self, converted_named_tensors: list[tuple[str, torch.Tensor]], pbar: tqdm | None = None
     ) -> None:
         """Lock → broadcast → clear → unlock. Lock prevents NCCL deadlock."""
