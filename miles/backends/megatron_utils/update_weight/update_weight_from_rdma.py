@@ -72,6 +72,71 @@ class UpdateWeightFromRDMA(UpdateWeightFromDistributed):
         num_workers = getattr(args, "rdma_transfer_workers", 4)
         self.transfer_manager = RDMATransferManager(num_workers=num_workers)
 
+    def _pause_and_prepare_engines(self):
+        """Register shared CPU pinned memory with RDMA on first call."""
+        super()._pause_and_prepare_engines()
+        if not self._is_source:
+            return
+
+        if not self._model_registered:
+            self._weight_memory_registry = register_cpu_memory_region(self._shared_params_dict, self._engine)
+        self._model_registered = True
+
+    def _finalize_and_resume_engines(self):
+        if dist.get_rank() == 0:
+            ray.get(
+                [
+                    engine.update_weight_version.remote(weight_version=str(self.weight_version))
+                    for engine in self.rollout_engines
+                ]
+            )
+        super()._finalize_and_resume_engines()
+
+    def _update_weight_implementation(
+        self, converted_named_tensors: list[tuple[str, torch.Tensor]], pbar: tqdm | None = None
+    ) -> None:
+        """Stage incoming tensors; when all shards for a param are collected,
+        load into shared buffer and RDMA-write per engine rank.
+
+        Only calls load_weights() with complete accumulated tensors, preventing
+        partial writes that would corrupt the shared buffer when different engine
+        ranks have different EP expert-to-local mappings.
+        """
+        if not self._is_source or not converted_named_tensors:
+            return
+
+        transfer_ready_params, ready_hf_tensors = self._get_transfer_ready_params(converted_named_tensors)
+
+        if transfer_ready_params and ready_hf_tensors:
+            last_idx = len(self._engine_rank_list) - 1
+            for i, info in enumerate(self._engine_rank_list):
+                info.model_replica.load_weights(ready_hf_tensors)
+
+                is_last = i == last_idx
+                if is_last:
+                    # Last engine rank: fire-and-forget all sessions to background
+                    for remote_session in info.remote_weight_infos:
+                        self.transfer_manager.submit(
+                            self._do_rdma_write_one_session,
+                            info,
+                            remote_session,
+                            transfer_ready_params,
+                        )
+                else:
+                    futures = [
+                        self.transfer_manager.submit_returning_future(
+                            self._do_rdma_write_one_session,
+                            info,
+                            remote_session,
+                            transfer_ready_params,
+                        )
+                        for remote_session in info.remote_weight_infos
+                    ]
+                    for f in futures:
+                        f.result()
+
+        converted_named_tensors.clear()
+
     def connect_rollout_engines(
         self, rollout_engines: Sequence[ActorHandle], rollout_engine_lock: ActorHandle
     ) -> None:
@@ -165,71 +230,6 @@ class UpdateWeightFromRDMA(UpdateWeightFromDistributed):
         torch.cuda.empty_cache()
 
         return model
-
-    def _pause_and_prepare_engines(self):
-        """Register shared CPU pinned memory with RDMA on first call."""
-        super()._pause_and_prepare_engines()
-        if not self._is_source:
-            return
-
-        if not self._model_registered:
-            self._weight_memory_registry = register_cpu_memory_region(self._shared_params_dict, self._engine)
-        self._model_registered = True
-
-    def _finalize_and_resume_engines(self):
-        if dist.get_rank() == 0:
-            ray.get(
-                [
-                    engine.update_weight_version.remote(weight_version=str(self.weight_version))
-                    for engine in self.rollout_engines
-                ]
-            )
-        super()._finalize_and_resume_engines()
-
-    def _update_weight_implementation(
-        self, converted_named_tensors: list[tuple[str, torch.Tensor]], pbar: tqdm | None = None
-    ) -> None:
-        """Stage incoming tensors; when all shards for a param are collected,
-        load into shared buffer and RDMA-write per engine rank.
-
-        Only calls load_weights() with complete accumulated tensors, preventing
-        partial writes that would corrupt the shared buffer when different engine
-        ranks have different EP expert-to-local mappings.
-        """
-        if not self._is_source or not converted_named_tensors:
-            return
-
-        transfer_ready_params, ready_hf_tensors = self._get_transfer_ready_params(converted_named_tensors)
-
-        if transfer_ready_params and ready_hf_tensors:
-            last_idx = len(self._engine_rank_list) - 1
-            for i, info in enumerate(self._engine_rank_list):
-                info.model_replica.load_weights(ready_hf_tensors)
-
-                is_last = i == last_idx
-                if is_last:
-                    # Last engine rank: fire-and-forget all sessions to background
-                    for remote_session in info.remote_weight_infos:
-                        self.transfer_manager.submit(
-                            self._do_rdma_write_one_session,
-                            info,
-                            remote_session,
-                            transfer_ready_params,
-                        )
-                else:
-                    futures = [
-                        self.transfer_manager.submit_returning_future(
-                            self._do_rdma_write_one_session,
-                            info,
-                            remote_session,
-                            transfer_ready_params,
-                        )
-                        for remote_session in info.remote_weight_infos
-                    ]
-                    for f in futures:
-                        f.result()
-
-        converted_named_tensors.clear()
 
     def _get_transfer_ready_params(
         self, converted_named_tensors: list[tuple[str, torch.Tensor]]
