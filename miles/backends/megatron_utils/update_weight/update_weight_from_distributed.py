@@ -113,7 +113,7 @@ class UpdateWeightFromDistributed(BucketedWeightGatherMixin):
         self._pause_and_prepare_engines()
         dist.barrier(group=get_gloo_group())
 
-        pbar = tqdm(desc=f"[{self._group_name}] Update weights", total=0) if self._is_pp_src_rank else None
+        pbar = tqdm(desc=f"[{self._group_name}] Update weights", total=0) if self._is_source else None
 
         self._gather_and_update_non_expert_weights(self._update_weight_implementation, pbar)
         dist.barrier(group=get_gloo_group())
