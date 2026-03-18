@@ -189,6 +189,7 @@ class UpdateWeightFromRDMA(UpdateWeightFromDistributed):
                     parallelism_config,
                     self.args.hf_checkpoint,
                     server_args,
+                    first_engine_rank=first_engine_rank,
                 )
                 if first_engine_rank:
                     self._shared_params_dict = dict(model_replica.named_parameters())
