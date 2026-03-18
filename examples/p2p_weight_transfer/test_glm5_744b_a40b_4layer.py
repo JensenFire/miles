@@ -32,6 +32,7 @@ def _process_glm_checkpoint():
         return
 
     config["architectures"] = ["DeepseekV32ForCausalLM"]
+    config["rope_theta"] = "10000"
     config["auto_map"] = {
         "AutoConfig": "configuration_deepseek_v32.DeepseekV32Config",
         "AutoModelForCausalLM": "modeling_deepseek_v32.DeepseekV32ForCausalLM",
