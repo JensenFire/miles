@@ -62,15 +62,18 @@ class UpdateWeightFromRDMA(UpdateWeightFromDistributed):
             is_lora=is_lora,
         )
         self.transfer_plan = RemoteTransferPlan(args, model)
-        self._is_source = self.transfer_plan._gathered_dp_rank < self.transfer_plan._rollout_num_gpus
-        self.global_rank = dist.get_rank(group=get_gloo_group())
 
+        self.global_rank = dist.get_rank(group=get_gloo_group())
         self._model_registered = False
         self._update_pending: dict[str, int] = {}
 
         self._staged_tensors: dict[str, list[tuple[str, torch.Tensor]]] = {}
         num_workers = getattr(args, "rdma_transfer_workers", 4)
         self.transfer_manager = RDMATransferManager(num_workers=num_workers)
+
+    @property
+    def _is_source(self):
+        return self.transfer_plan._gathered_dp_rank < self.transfer_plan._rollout_num_gpus
 
     def _pause_and_prepare_engines(self):
         """Register shared CPU pinned memory with RDMA on first call."""
