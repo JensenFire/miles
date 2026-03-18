@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Literal
 
 import typer
 
@@ -18,7 +17,7 @@ class ScriptArgs(U.ExecuteTrainConfig):
     sglang_dp: int = 1
     sglang_ep: int = 1
     sglang_pp: int = 1
-    
+
     num_train_gpus: int = 1
     num_rollout_gpus: int = 1
 
@@ -100,6 +99,7 @@ def execute(args: ScriptArgs):
         f"--sglang-expert-parallel-size {args.sglang_ep} "
         f"--sglang-pipeline-parallel-size {args.sglang_pp} "
         "--sglang-mem-fraction-static 0.8 "
+        "--sglang-remote-instance-weight-loader-start-seed-via-transfer-engine "
     )
 
     ci_args = "--ci-test "
@@ -113,8 +113,8 @@ def execute(args: ScriptArgs):
         "--actor-num-nodes 1 "
         f"--actor-num-gpus-per-node {args.num_train_gpus} "
         f"--update-weight-buffer-size {1 * 1024 ** 3} "
-        f"--check-weight-update-equal "
-        f"--update-weight-transfer-mode rdma "
+        "--check-weight-update-equal "
+        "--update-weight-transfer-mode rdma "
     )
 
     train_args = (
