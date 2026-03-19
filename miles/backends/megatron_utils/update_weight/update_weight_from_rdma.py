@@ -18,6 +18,7 @@ from tqdm import tqdm
 
 from miles.utils.distributed_utils import get_gloo_group
 
+from .distributed_mixin import DistBucketedWeightUpdateMixin
 from .rdma_transfer_utils import (
     EngineRankInfo,
     RDMATransferManager,
@@ -27,12 +28,11 @@ from .rdma_transfer_utils import (
     query_remote_weight_infos,
     register_cpu_memory_region,
 )
-from .update_weight_from_distributed import UpdateWeightFromDistributed
 
 logger = logging.getLogger(__name__)
 
 
-class UpdateWeightFromRDMA(UpdateWeightFromDistributed):
+class UpdateWeightFromRDMA(DistBucketedWeightUpdateMixin):
     """RDMA weight transfer using BucketedWeightGatherMixin for bucketed all-gather + HF conversion,
     and a single set of shared CPU pinned buffers for RDMA writes.
 
@@ -53,16 +53,14 @@ class UpdateWeightFromRDMA(UpdateWeightFromDistributed):
         quantization_config: dict[str, int | str | list[str]] | None,
         is_lora: bool = False,
     ) -> None:
-        super().__init__(
-            args,
-            model,
-            weights_getter,
-            model_name=model_name,
-            quantization_config=quantization_config,
-            is_lora=is_lora,
-        )
-        self.transfer_plan = RemoteTransferPlan(args, model)
+        self.args = args
+        self.model = model
+        self.model_name = model_name
+        self.quantization_config = quantization_config
+        self.weight_version = 0
+        self._model_update_groups = None
 
+        self.transfer_plan = RemoteTransferPlan(args, model)
         self.global_rank = dist.get_rank(group=get_gloo_group())
         self._model_registered = False
         self._update_pending: dict[str, int] = {}
