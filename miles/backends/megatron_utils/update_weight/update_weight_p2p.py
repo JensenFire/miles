@@ -133,6 +133,7 @@ class UpdateWeightP2P(DistBucketedWeightUpdateMixin):
                             transfer_ready_params,
                         )
                 else:
+                    # Non-last engine rank needs to be fully written to target before next update can happen.
                     futures = [
                         self.transfer_manager.submit_returning_future(
                             self._do_p2p_write_one_session,
