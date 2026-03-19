@@ -82,7 +82,6 @@ class UpdateWeightP2P(DistBucketedWeightUpdateMixin):
         self._update_pending = {}
         if self._staged_tensors:
             self._staged_tensors.clear()
-        logger.info("[P2P-Shared] All transfers complete")
 
     def _pause_and_prepare_engines(self):
         """Register shared CPU pinned memory with P2P on first call."""
@@ -234,9 +233,7 @@ class UpdateWeightP2P(DistBucketedWeightUpdateMixin):
             torch.cuda.synchronize()
         else:
             for name, param in model.named_parameters():
-                if name not in self._shared_params_dict:
-                    logger.warning(f"[P2P-Shared] Parameter {name} not found in shared buffers, skipping")
-                    continue
+                assert name in self._shared_params_dict, f"[P2P-Shared] Parameter {name} not found in shared buffers"
                 param.data = self._shared_params_dict[name]
 
         torch.cuda.empty_cache()
