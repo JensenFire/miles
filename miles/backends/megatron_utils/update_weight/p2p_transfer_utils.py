@@ -118,7 +118,7 @@ class RemoteTransferPlan:
                     # otherwise round robin
                     select_source = cur_source_index % self._gathered_dp_size
                     cur_source_index += 1
-                assignments[select_source][engine_rank].append(engine_rank)
+                assignments[select_source][engine_rank].append(engine_idx)
 
         transfer_tasks = []
         for engine_rank, engine_indices in assignments[self._gathered_dp_rank].items():
