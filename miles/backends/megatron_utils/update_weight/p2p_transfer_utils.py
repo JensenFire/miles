@@ -4,15 +4,13 @@ from argparse import Namespace
 from collections import defaultdict
 from collections.abc import Callable, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
-from megatron.core import mpu
 
 import ray
-from ray.actor import ActorHandle
-from sglang.srt.server_args import ServerArgs
-
 import torch
 import torch.distributed as dist
-
+from megatron.core import mpu
+from ray.actor import ActorHandle
+from sglang.srt.server_args import ServerArgs
 
 logger = logging.getLogger(__name__)
 
@@ -28,21 +26,19 @@ class TransferTaskP2PMeta:
 
 class RemoteTransferPlan:
     """
-    Plans and manages remote weight transfers for RDMA backends,
+    Plans and manages remote weight transfers for p2p backends,
     assuming static training and rollout placements.
     """
 
-    def __init__(
-        self, args: Namespace, model: Sequence[torch.nn.Module]
-    ) -> None:
+    def __init__(self, args: Namespace, model: Sequence[torch.nn.Module]) -> None:
         self._get_parallelism(args)
 
     def _get_parallelism(self, args: Namespace) -> None:
         """
         Collect parallelism information for source (trainer) and target (rollout engines).
 
-        All ranks with the same PP rank (gathered_dp_rank) hold a complete weight replica 
-        after bucketed all-gather across TP/EP/ETP dims. The size of this group is 
+        All ranks with the same PP rank (gathered_dp_rank) hold a complete weight replica
+        after bucketed all-gather across TP/EP/ETP dims. The size of this group is
         gathered_dp_size, and each rank has a unique gathered_dp_rank in [0, gathered_dp_size).
         """
         self._pp_rank = mpu.get_pipeline_model_parallel_rank()
@@ -108,15 +104,16 @@ class RemoteTransferPlan:
         for t in transfer_tasks:
             by_rank[t.engine_rank].append(t.engine_ind)
         return transfer_tasks
-    
+
+
 @dataclasses.dataclass
 class RemoteWeightInfo:
     session_id: str
     weights_info: dict[str, tuple[int, int, int]]  # name -> (remote_address, numel, element_size)
 
 
-class RDMATransferManager:
-    """Generic async task manager for RDMA writes.
+class P2PTransferManager:
+    """Generic async task manager for P2P writes.
 
     Accepts arbitrary callables via submit(), runs them in a thread pool,
     and tracks futures for bulk waiting.
@@ -150,7 +147,7 @@ class RDMATransferManager:
             try:
                 future.result(timeout=30.0)
             except Exception as e:
-                logger.error(f"[RDMA] Transfer future failed: {e}")
+                logger.error(f"[P2P] Transfer future failed: {e}")
 
         self.transfer_futures.clear()
 
@@ -165,6 +162,7 @@ class EngineRankInfo:
 
     def add_remote_session(self, remote_info: RemoteWeightInfo) -> None:
         self.remote_weight_infos.append(remote_info)
+
 
 def create_server_args_from_dict(data_dict: dict) -> ServerArgs:
     valid_fields = {f.name for f in dataclasses.fields(ServerArgs)}

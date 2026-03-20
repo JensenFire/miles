@@ -272,7 +272,7 @@ class SGLangEngine(RayActor):
             "update_weights_from_tensor",
             payload,
         )
-    
+
     def get_remote_instance_transfer_engine_info(self, rank: int):
         response = requests.get(
             f"http://{self.server_host}:{self.server_port}/get_remote_instance_transfer_engine_info",
@@ -485,6 +485,12 @@ class SGLangEngine(RayActor):
                 "restore_weights_before_load": restore_weights_before_load,
                 "post_process_quantization": post_process_quantization,
             },
+        )
+
+    def update_weight_version(self, weight_version: str):
+        return self._make_request(
+            "update_weight_version",
+            {"new_version": weight_version},
         )
 
     def start_profile(
