@@ -166,6 +166,3 @@ def update_weights_from_distributed(
         handle.wait()
 
     return refs
-
-
-#
