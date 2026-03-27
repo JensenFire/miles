@@ -482,6 +482,7 @@ class SGLangEngine(RayActor):
         self,
         restore_weights_before_load: bool = False,
         post_process_quantization: bool = False,
+        post_load_weights: bool = False,
     ):
         """
         Update model weights from tensor data. The HTTP server will only post meta data, and the real weights will be copied directly from GPUs.
@@ -494,6 +495,7 @@ class SGLangEngine(RayActor):
             {
                 "restore_weights_before_load": restore_weights_before_load,
                 "post_process_quantization": post_process_quantization,
+                "post_load_weights": post_load_weights,
             },
         )
 

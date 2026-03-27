@@ -18,6 +18,7 @@ from tqdm import tqdm
 
 from miles.utils.distributed_utils import get_gloo_group
 
+from .common import post_process_weights
 from .distributed_mixin import DistBucketedWeightUpdateMixin
 from .p2p_transfer_utils import (
     P2PTransferManager,
@@ -113,12 +114,18 @@ class UpdateWeightP2P(DistBucketedWeightUpdateMixin):
 
     def _finalize_and_resume_engines(self):
         # The `update_weight_version` here is necessary because the engine was not aware that the write has happened
+        # After p2p transfering, some models (like the ones with Deepseek-arch) of rollout side should invoke
+        # `post_load_weights` to re-generate the params which are not registered as `model.named_parameters()`
         if dist.get_rank() == 0:
             ray.get(
                 [
                     engine.update_weight_version.remote(weight_version=str(self.weight_version))
                     for engine in self.rollout_engines
                 ]
+            )
+            post_process_weights(
+                rollout_engines=self.rollout_engines,
+                post_process_quantization=True,
             )
         super()._finalize_and_resume_engines()
 
