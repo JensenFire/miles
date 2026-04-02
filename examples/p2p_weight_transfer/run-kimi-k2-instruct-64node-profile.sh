@@ -252,7 +252,8 @@ run_mode() {
     \"PYTHONPATH\": \"/root/Megatron-LM/\",
     \"CUDA_DEVICE_MAX_CONNECTIONS\": \"1\",
     \"NCCL_NVLS_ENABLE\": \"${NCCL_NVLS_VAL}\",
-    \"MODEL_ARGS_ROTARY_BASE\": \"50000\"
+    \"MODEL_ARGS_ROTARY_BASE\": \"50000\",
+    \"DEPRECATED_MEGATRON_COMPATIBLE\": \"1\"
   }
 }"
 
