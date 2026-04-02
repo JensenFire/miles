@@ -199,7 +199,7 @@ run_mode() {
         SGLANG_ARGS+=(--sglang-remote-instance-weight-loader-start-seed-via-transfer-engine)
     fi
     
-    SGLANG_ARGS+=(--sglang-model-loader-extra-config '{"enable_multithread_load": true, "num_threads": 8}')
+    SGLANG_ARGS+=(--sglang-model-loader-extra-config '{"enable_multithread_load":true,"num_threads":8}')
 
 
     # --- Misc ---
