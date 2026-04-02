@@ -70,7 +70,7 @@ TRAIN_ETP=1
 
 # Rollout parallelism: 8 engines x 32 GPUs each
 SGLANG_TP=32
-SGLANG_DP=8
+SGLANG_DP=1
 SGLANG_EP=32
 
 # 61 layers, PP=8: ceil(61/8)=8 per stage, last stage = 61 - 8*7 = 5
