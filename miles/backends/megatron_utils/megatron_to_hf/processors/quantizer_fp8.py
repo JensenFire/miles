@@ -85,6 +85,17 @@ def quantize_params_fp8(args, megatron_name, converted_named_params, quantizatio
     # for other parameters, we just return the original converted_named_params
     return converted_named_params
 
+# why applying this change: 
+# kimi-k2 cannot be served in 16 h100-80 nodes 
+# kimi-k2 has weights of ~1T params.
+# - For training: the weights should be of bf16 type, with ~2T memory ~ =  2048 G
+#   16 h100-80 nodes  = 16 x 8 x 80G = 10240G
+
+# - For inference side: with Kimi's 1T memory with fp8 dtype, if sglang-tp == 16, then each gpu needs to hold: 1024GB / 16 ~= 64G, how
+#  ever, it needs to leave buffer for the 
+
+
+TARGET_SHAPE = (10, 112) 
 
 def _quantize_param(args, name, weight, weight_block_size):
     assert name.endswith(".weight"), f"Expected weight parameter, got {name}"
@@ -92,10 +103,20 @@ def _quantize_param(args, name, weight, weight_block_size):
     FP8_MAX = torch.finfo(torch.float8_e4m3fn).max
     if weight_block_size is not None:
         if _get_scale_format(args, name, weight_block_size) == "ue8m0":
+            raise NotImplementedError("Should not in this path")
             qweight, scale = quant_weight_ue8m0(weight, weight_block_size=weight_block_size)
             scale = transform_scale_ue8m0(scale, mn=qweight.shape[-2])
         else:
-            qweight, scale = blockwise_cast_to_fp8_triton(weight, weight_block_size)
+
+            real_weight_block_size = [128,128]
+            qweight, scale = blockwise_cast_to_fp8_triton(weight, real_weight_block_size)
+
+            scale = scale.repeat_interleave(2, dim=0).repeat_interleave(2, dim=1)
+
+            if tuple(scale.shape) == TARGET_SHAPE:
+                scale = scale[:9, :]
+                # modified = True
+
         scale_name = name.replace(".weight", ".weight_scale_inv")
     else:
         # per tensor quant
