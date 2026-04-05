@@ -152,12 +152,13 @@ class DistBucketedWeightUpdateMixin:
 
     def _finalize_and_resume_engines(self) -> None:
         """Run post-process if needed and resume rollout engines."""
-        post_process_weights(
-                rollout_engines=self.rollout_engines,
-                restore_weights_before_load=False,
-                post_process_quantization=True,
-            )        
+    
         if dist.get_rank() == 0:
+            post_process_weights(
+                    rollout_engines=self.rollout_engines,
+                    restore_weights_before_load=False,
+                    post_process_quantization=True,
+                )                
             # int4/fp4 post_process, mxfp8 post-process (swizzle MoE scales).
             if self.quantization_config and self.quantization_config["quant_method"] in [
                 "compressed-tensors",
