@@ -165,9 +165,9 @@ run_mode() {
         --weight-decay 0.1
         --adam-beta1 0.9
         --adam-beta2 0.98
-        # --optimizer-cpu-offload
-        # --overlap-cpu-optimizer-d2h-h2d
-        # --use-precision-aware-optimizer
+        --optimizer-cpu-offload
+        --overlap-cpu-optimizer-d2h-h2d
+        --use-precision-aware-optimizer
     )
 
     # --- WANDB ---
@@ -185,7 +185,7 @@ run_mode() {
         --sglang-cuda-graph-bs 1 2 4 8 16
         --sglang-enable-dp-attention
         --sglang-enable-dp-lm-head
-        --sglang-attention-backend triton
+        # --sglang-attention-backend triton
     )
     if [ "$mode" = "p2p" ]; then
         SGLANG_ARGS+=(--sglang-remote-instance-weight-loader-start-seed-via-transfer-engine)
