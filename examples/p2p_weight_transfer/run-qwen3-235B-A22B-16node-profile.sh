@@ -185,6 +185,7 @@ run_mode() {
         --sglang-cuda-graph-bs 1 2 4 8 16
         --sglang-enable-dp-attention
         --sglang-enable-dp-lm-head
+        --sglang-attention-backend triton
     )
     if [ "$mode" = "p2p" ]; then
         SGLANG_ARGS+=(--sglang-remote-instance-weight-loader-start-seed-via-transfer-engine)
