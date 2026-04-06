@@ -145,7 +145,7 @@ run_mode() {
         --recompute-method uniform
         --recompute-num-layers 1
         --use-dynamic-batch-size
-        --max-tokens-per-gpu 16384
+        --max-tokens-per-gpu 8192
     )
 
     # --- GRPO ---
@@ -165,9 +165,9 @@ run_mode() {
         --weight-decay 0.1
         --adam-beta1 0.9
         --adam-beta2 0.98
-        --optimizer-cpu-offload
-        --overlap-cpu-optimizer-d2h-h2d
-        --use-precision-aware-optimizer
+        # --optimizer-cpu-offload
+        # --overlap-cpu-optimizer-d2h-h2d
+        # --use-precision-aware-optimizer
     )
 
     # --- WANDB ---
