@@ -192,7 +192,7 @@ run_mode() {
     if [ "$SKIP_VALIDATION" -eq 1 ]; then
         SGLANG_ARGS+=(--sglang-load-format dummy)
     else
-        SGLANG_ARGS+=(--sglang-model-loader-extra-config '{"enable_multithread_load": true, "num_threads": 8}')
+        SGLANG_ARGS+=(--sglang-model-loader-extra-config '{"enable_multithread_load":true,"num_threads":8}')
     fi
 
     # --- Misc ---
