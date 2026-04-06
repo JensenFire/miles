@@ -207,7 +207,7 @@ run_mode() {
         --hidden-dropout 0.0
         --accumulate-allreduce-grads-in-fp32
         --attention-softmax-in-fp32
-        --attention-backend flash
+        --attention-backend triton
         --actor-num-nodes ${NUM_TRAIN_NODES}
         --actor-num-gpus-per-node ${GPUS_PER_NODE}
         --update-weight-buffer-size ${BUFFER_SIZE}
