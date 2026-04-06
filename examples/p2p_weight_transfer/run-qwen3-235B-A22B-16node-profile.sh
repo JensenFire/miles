@@ -57,7 +57,7 @@ NUM_ROLLOUT_GPUS=64   # 8 nodes
 SKIP_VALIDATION=0
 BUCKET_SIZE_GB=1.0
 NO_SAVE_OPTIM=0
-ENABLE_NCCL_NVLS=0
+ENABLE_NCCL_NVLS=1
 DECODER_LAST_PIPELINE_NUM_LAYERS=22
 
 NUM_TRAIN_NODES=$((NUM_TRAIN_GPUS / GPUS_PER_NODE))
@@ -196,10 +196,10 @@ run_mode() {
     fi
 
     # --- Misc ---
-    if [ "$mode" = "rdma" ]; then
+    if [ "$mode" = "p2p" ]; then
         BUFFER_SIZE=$(python3 -c "print(int(${BUCKET_SIZE_GB} * 1024 * 1024 * 1024))")
     else
-        BUFFER_SIZE=$((4 * 1024 * 1024 * 1024))
+        BUFFER_SIZE=$((1 * 1024 * 1024 * 1024))
     fi
 
     MISC_ARGS=(
@@ -207,7 +207,7 @@ run_mode() {
         --hidden-dropout 0.0
         --accumulate-allreduce-grads-in-fp32
         --attention-softmax-in-fp32
-        --attention-backend triton
+        --attention-backend flash
         --actor-num-nodes ${NUM_TRAIN_NODES}
         --actor-num-gpus-per-node ${GPUS_PER_NODE}
         --update-weight-buffer-size ${BUFFER_SIZE}
@@ -215,8 +215,8 @@ run_mode() {
     if [ "$SKIP_VALIDATION" -eq 0 ]; then
         MISC_ARGS+=(--check-weight-update-equal)
     fi
-    if [ "$mode" = "rdma" ]; then
-        MISC_ARGS+=(--update-weight-transfer-mode rdma)
+    if [ "$mode" = "p2p" ]; then
+        MISC_ARGS+=(--update-weight-transfer-mode p2p)
     fi
 
     # --- Worker nodes sleep to let head node start first ---
