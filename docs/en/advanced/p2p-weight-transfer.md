@@ -64,16 +64,16 @@ steady-state steps 3–12 (steps 0–2 are warmup).
 Consolidated timer logs are stored in
 `/mnt/vast/checkpoints/jiadongguo/rdma/logs/profile-for-release/<model>/{broadcast,p2p}/`.
 
-| Model Family | Model Name | Total Param | sglang Model Class | Train Config | Inference Config | NCCL (ms) | RDMA (ms) | Delta |
-|---|---|---|---|---|---|---|---|---|
-| GLM4 | GLM-Z1-9B-0414 | 9B | `Glm4ForCausalLM` | TP=2, PP=1, CP=2, EP=1, ETP=1, 1 node | WS=4, EP=1, 1 node | 694.6 | 707.1 | +1.8% |
-| DeepSeek-V2 | Moonlight-16B-A3B | 16B(3B) | `DeepseekV2ForCausalLM` | TP=2, PP=1, CP=1, EP=8, ETP=1, 1 node | WS=8, EP=8, 1 node | 1,482.0 | 1,073.3 | **−27.6%** |
-| GLM4-MoE | GLM-4.7-9B-Flash | 9B | `Glm4MoeLiteForCausalLM` | TP=4, PP=1, CP=1, EP=8, ETP=1, 1 node | WS=4, EP=4, 1 node | 2,508.6 | 4,229.0 | +68.6% |
-| DeepSeek-V3 | GLM-5_4layer | 4-layer | `DeepseekV3ForCausalLM` | TP=4, PP=1, CP=1, EP=8, ETP=1, 1 node | WS=8, EP=8, 1 node | 732.2 | 1,260.8 | +72.2% |
-| Qwen3-MoE | Qwen3-30B-A3B | 30B(3B) | `Qwen3MoeForCausalLM` | TP=4, PP=1, CP=1, EP=8, ETP=1, 2 nodes | WS=8, EP=8, 2 nodes | 2,670.0 | 2,160.2 | **−19.1%** |
-| GLM4-MoE | GLM-4.5-Air | 106B(12B) | `Glm4MoeForCausalLM` | TP=1, PP=4, CP=1, EP=8, ETP=1, 4 nodes | WS=8, EP=8, 4 nodes | 6,433.3 | 2,637.2 | **−59.0%** |
-| Qwen3-MoE | Qwen3-235B-A22B | 235B(22B) | `Qwen3MoeForCausalLM` | TP=4, PP=4, CP=2, EP=16, ETP=1, 8 nodes | WS=32, EP=32, 8 nodes | 10,753.6 | 3,162.0 | **−70.6%** |
-| DeepSeek-V3 | GLM-5 | 744B(40B) | `DeepseekV3ForCausalLM` | TP=4, PP=4, CP=2, EP=32, ETP=1, 16 nodes | WS=64, EP=64, 16 nodes | — | — | — |
+| Model Family | Model Name | Total Param | sglang Model Class | Train Config | Inference Config | Bucket (GB) | NCCL (ms) | RDMA (ms) | Delta |
+|---|---|---|---|---|---|---|---|---|---|
+| GLM4 | GLM-Z1-9B-0414 | 9B | `Glm4ForCausalLM` | TP=2, PP=1, CP=2, EP=1, ETP=1, 1 node | WS=4, EP=1, 1 node | 1 | 694.6 | 707.1 | +1.8% |
+| DeepSeek-V2 | Moonlight-16B-A3B | 16B(3B) | `DeepseekV2ForCausalLM` | TP=2, PP=1, CP=1, EP=8, ETP=1, 1 node | WS=8, EP=8, 1 node | 1 | 1,482.0 | 1,073.3 | **−27.6%** |
+| GLM4-MoE | GLM-4.7-9B-Flash | 9B | `Glm4MoeLiteForCausalLM` | TP=4, PP=1, CP=1, EP=8, ETP=1, 1 node | WS=4, EP=4, 1 node | 1 | 2,508.6 | 4,229.0 | +68.6% |
+| DeepSeek-V3 | GLM-5_4layer | 4-layer | `DeepseekV3ForCausalLM` | TP=4, PP=1, CP=1, EP=8, ETP=1, 1 node | WS=8, EP=8, 1 node | 1 | 732.2 | 1,260.8 | +72.2% |
+| Qwen3-MoE | Qwen3-30B-A3B | 30B(3B) | `Qwen3MoeForCausalLM` | TP=4, PP=1, CP=1, EP=8, ETP=1, 2 nodes | WS=8, EP=8, 2 nodes | 1 | 2,670.0 | 2,160.2 | **−19.1%** |
+| GLM4-MoE | GLM-4.5-Air | 106B(12B) | `Glm4MoeForCausalLM` | TP=1, PP=4, CP=1, EP=8, ETP=1, 4 nodes | WS=8, EP=8, 4 nodes | 1 | 5,001.1 | 2,637.2 | **−47.3%** |
+| Qwen3-MoE | Qwen3-235B-A22B | 235B(22B) | `Qwen3MoeForCausalLM` | TP=4, PP=4, CP=2, EP=16, ETP=1, 8 nodes | WS=32, EP=32, 8 nodes | 1 | 10,753.6 | 3,162.0 | **−70.6%** |
+| DeepSeek-V3 | GLM-5 | 744B(40B) | `DeepseekV3ForCausalLM` | TP=4, PP=4, CP=2, EP=32, ETP=1, 16 nodes | WS=64, EP=64, 16 nodes | 1 | — | — | — |
 
 > **GLM-5** (16+16 nodes) and **Kimi K2** (32+32 nodes) profiling pending.
 
