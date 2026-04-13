@@ -1,4 +1,3 @@
-
 #!/bin/bash
 
 # Prepare script for Kimi-K2: download model, datasets, and convert checkpoint.

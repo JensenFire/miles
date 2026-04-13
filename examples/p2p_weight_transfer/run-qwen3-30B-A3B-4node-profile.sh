@@ -18,7 +18,7 @@
 
 set -ex
 
-export PYTHONBUFFERED=16
+export PYTHONUNBUFFERED=1
 
 # ---------------------------------------------------------------------------
 # Positional arguments
@@ -228,7 +228,10 @@ run_mode() {
     # --- MC transfer timeout ---
     MC_TRANSFER_TIMEOUT=300
 
-    NCCL_NVLS_VAL="1"
+    NCCL_NVLS_VAL="0"
+    if [ "$ENABLE_NCCL_NVLS" -eq 1 ]; then
+        NCCL_NVLS_VAL="1"
+    fi
 
 
     # --- Launch Ray ---
