@@ -1,17 +1,14 @@
 #!/bin/bash
 
-# Multi-node (2-node) profiling script for GLM-4.7-Flash with broadcasting/p2p weight transfer.
+# Multi-node (2-node) profiling script for Moonlight-16B-A3B with p2p weight transfer.
+# Node 0 = training (8 GPUs), Node 1 = rollout (8 GPUs).
 #
 # Usage:
-#   bash run-glm4.7-flash-2node-profile.sh <MODE> <NODE_RANK> <HEAD_NODE_IP>
+#   bash run-moonlight-16B-2node-profile.sh <MODE> <NODE_RANK> <HEAD_NODE_IP>
 #
 #   MODE          : broadcast | p2p
 #   NODE_RANK     : 0 (head node) | 1 (worker node)
 #   HEAD_NODE_IP  : IP address of the head node
-#
-# Examples:
-#   bash run-glm4.7-flash-2node-profile.sh p2p 0 10.0.0.1   # head node
-#   bash run-glm4.7-flash-2node-profile.sh p2p 1 10.0.0.1   # worker node
 
 set -ex
 
@@ -28,9 +25,9 @@ if [ $# -lt 3 ]; then
     exit 1
 fi
 
-MODE="$1"              # broadcast | p2p
-NODE_RANK="$2"         # 0 = head, 1 = worker
-HEAD_NODE_IP="$3"      # head node IP address
+MODE="$1"
+NODE_RANK="$2"
+HEAD_NODE_IP="$3"
 
 # ---------------------------------------------------------------------------
 # Cleanup stale processes (head node only)
@@ -56,40 +53,21 @@ NUM_TRAIN_GPUS=8      # 1 node
 NUM_ROLLOUT_GPUS=8    # 1 node
 SKIP_VALIDATION="${SKIP_VALIDATION:-0}"
 BUCKET_SIZE_GB="${BUCKET_SIZE_GB:-1.0}"
-NO_SAVE_OPTIM=0
-ENABLE_NCCL_NVLS=0
 
 NUM_TRAIN_NODES=$((NUM_TRAIN_GPUS / GPUS_PER_NODE))
 
 # ---------------------------------------------------------------------------
-# NVLink detection
-# ---------------------------------------------------------------------------
-NVLINK_COUNT=$(nvidia-smi topo -m 2>/dev/null | grep -o 'NV[0-9][0-9]*' | wc -l)
-if [ "$NVLINK_COUNT" -gt 0 ]; then
-    HAS_NVLINK=1
-else
-    HAS_NVLINK=0
-fi
-echo "HAS_NVLINK: $HAS_NVLINK (detected $NVLINK_COUNT NVLink references)"
-
-# ---------------------------------------------------------------------------
 # Model config
 # ---------------------------------------------------------------------------
-MODEL_NAME="GLM-4.7-Flash"
-MODEL_TYPE="glm4.7-flash"
+MODEL_NAME="Moonlight-16B-A3B-Instruct"
+MODEL_TYPE="moonlight"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 MILES_ROOT="/root/miles"
 source "${MILES_ROOT}/scripts/models/${MODEL_TYPE}.sh"
 
 # ---------------------------------------------------------------------------
-# Determine modes to run
-# ---------------------------------------------------------------------------
-
-MODES=("$MODE")
-
-# ---------------------------------------------------------------------------
-# Execute one mode (broadcast or p2p)
+# Execute
 # ---------------------------------------------------------------------------
 run_mode() {
     local mode="$1"
@@ -99,9 +77,6 @@ run_mode() {
         --hf-checkpoint "/root/models/${MODEL_NAME}/"
         --ref-load "/root/multinode/${MODEL_NAME}_torch_dist/"
     )
-    if [ "$NO_SAVE_OPTIM" -eq 1 ]; then
-        CKPT_ARGS+=(--no-save-optim)
-    fi
 
     # --- Rollout ---
     ROLLOUT_ARGS=(
@@ -120,18 +95,9 @@ run_mode() {
         --balance-data
     )
 
-    # --- Eval ---
-    EVAL_ARGS=(
-        --eval-prompt-data aime24 /root/datasets/aime-2024/aime-2024.jsonl
-        --n-samples-per-eval-prompt 16
-        --eval-max-response-len 16384
-        --eval-temperature 0.6
-        --eval-top-p 0.95
-    )
-
-    # --- Training parallelism ---
+    # --- Training parallelism (TP=2, CP=1, EP=8, 8 GPUs) ---
     PERF_ARGS=(
-        --tensor-model-parallel-size 4
+        --tensor-model-parallel-size 2
         --sequence-parallel
         --pipeline-model-parallel-size 1
         --context-parallel-size 1
@@ -163,25 +129,15 @@ run_mode() {
         --weight-decay 0.1
         --adam-beta1 0.9
         --adam-beta2 0.98
-        --optimizer-cpu-offload
-        --overlap-cpu-optimizer-d2h-h2d
-        --use-precision-aware-optimizer
     )
 
-    # --- WANDB ---
-    WANDB_ARGS=(
-        #--use-wandb
-    )
-
-    # --- SGLang: 2 engines x 4 GPUs ---
+    # --- SGLang: 1 engine x 8 GPUs (WS=8, EP=8, DP attention) ---
     SGLANG_ARGS=(
-        # tp_size must divide num_attention_heads (GLM-4.7-Flash has 20 heads), so use tp=4.
-        --rollout-num-gpus-per-engine 4
+        --rollout-num-gpus-per-engine 8
         --rollout-num-gpus ${NUM_ROLLOUT_GPUS}
         --sglang-mem-fraction-static 0.7
-        --sglang-ep-size 4
+        --sglang-ep-size 8
         --sglang-cuda-graph-bs 1 2 4 8 16
-        # --use-miles-router
         --sglang-enable-dp-attention
         --sglang-enable-dp-lm-head
     )
@@ -215,14 +171,6 @@ run_mode() {
         sleep 20
     fi
 
-    # --- MC transfer timeout ---
-    MC_TRANSFER_TIMEOUT=300
-
-    NCCL_NVLS_VAL="0"
-    if [ "$ENABLE_NCCL_NVLS" -eq 1 ]; then
-        NCCL_NVLS_VAL="1"
-    fi
-
     # --- Launch Ray ---
     if [ "$NODE_RANK" -eq 0 ]; then
         ray start --head --node-ip-address "${HEAD_NODE_IP}" --num-gpus ${GPUS_PER_NODE} \
@@ -234,11 +182,10 @@ run_mode() {
     # --- Build runtime env JSON ---
     RUNTIME_ENV_JSON="{
   \"env_vars\": {
-    \"MC_TRANSFER_TIMEOUT\": \"${MC_TRANSFER_TIMEOUT}\",
     \"RAY_DEBUG\": \"1\",
     \"PYTHONPATH\": \"/root/Megatron-LM/\",
     \"CUDA_DEVICE_MAX_CONNECTIONS\": \"1\",
-    \"NCCL_NVLS_ENABLE\": \"${NCCL_NVLS_VAL}\",
+    \"NCCL_NVLS_ENABLE\": \"0\",
     \"MILES_LOG_DIR\": \"${MILES_LOG_DIR:-}\"
   }
 }"
@@ -266,22 +213,17 @@ run_mode() {
             ${MODEL_ARGS[@]} \
             ${CKPT_ARGS[@]} \
             ${ROLLOUT_ARGS[@]} \
-            ${EVAL_ARGS[@]} \
             ${OPTIMIZER_ARGS[@]} \
             ${GRPO_ARGS[@]} \
-            ${WANDB_ARGS[@]} \
             ${PERF_ARGS[@]} \
             ${SGLANG_ARGS[@]} \
             ${MISC_ARGS[@]}
     fi
 }
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 echo ""
 echo "============================================================"
-echo "  Running: GLM-4.7-Flash / ${MODE}"
+echo "  Running: Moonlight-16B-A3B / ${MODE}"
 echo "============================================================"
 echo ""
 
