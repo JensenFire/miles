@@ -78,21 +78,6 @@ Consolidated timer logs are stored in
 
 > **GLM-5** (16+16 nodes) and **Kimi K2** (32+32 nodes) profiling pending.
 
-### Key Takeaways
-
-1. **P2P scales with cluster size.** The benefit grows as more nodes participate:
-   broadcast scales poorly with node count because every rank must receive from rank 0,
-   while P2P uses direct GPU-to-GPU transfers.
-
-2. **3.4× speedup at 8+8 nodes (235B).** P2P saves ~7.6 seconds per training step,
-   which compounds over thousands of RL iterations.
-
-3. **Crossover around 2+2 nodes.** Qwen3-30B (2+2 nodes) shows a modest 1.24× P2P advantage.
-   Below that, broadcast's simpler control path wins.
-
-4. **`finalize_and_resume_engines` overhead is negligible.** P2P adds ~7–9 ms to engine
-   finalization vs broadcast, but this is <0.1% of the total step time.
-
 ## Examples
 
 ### CI Test (single-node, Qwen3-4B)
