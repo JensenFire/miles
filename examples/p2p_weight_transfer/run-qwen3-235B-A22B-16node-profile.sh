@@ -196,11 +196,7 @@ run_mode() {
     fi
 
     # --- Misc ---
-    if [ "$mode" = "p2p" ]; then
-        BUFFER_SIZE=$(python3 -c "print(int(${BUCKET_SIZE_GB} * 1024 * 1024 * 1024))")
-    else
-        BUFFER_SIZE=$((1 * 1024 * 1024 * 1024))
-    fi
+    BUFFER_SIZE=$(python3 -c "print(int(${BUCKET_SIZE_GB} * 1024 * 1024 * 1024))")
 
     MISC_ARGS=(
         --attention-dropout 0.0
