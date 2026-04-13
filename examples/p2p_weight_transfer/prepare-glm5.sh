@@ -112,52 +112,26 @@ if not config_path.exists():
 with open(config_path) as f:
     config = json.load(f)
 
-if config.get('model_type') != 'deepseek_v32':
+# Patch config only if not already using deepseek_v32 (i.e. zai-org/GLM-5).
+# Pinaster variants already ship with model_type=deepseek_v32 + stubs.
+if config.get('model_type') == 'deepseek_v32':
+    print('Checkpoint already patched, skipping config')
+else:
     config['architectures'] = ['DeepseekV32ForCausalLM']
     config['auto_map'] = {
         'AutoConfig': 'configuration_deepseek_v32.DeepseekV32Config',
         'AutoModelForCausalLM': 'modeling_deepseek_v32.DeepseekV32ForCausalLM',
     }
     config['model_type'] = 'deepseek_v32'
-    # Ensure rope_theta is at top level (GLM-5 stores it inside rope_parameters)
-    if 'rope_theta' not in config:
-        rp = config.get('rope_parameters', {})
-        if isinstance(rp, dict) and 'rope_theta' in rp:
-            config['rope_theta'] = rp['rope_theta']
-        else:
-            config['rope_theta'] = 1000000  # GLM-5 default
     with open(config_path, 'w') as f:
         json.dump(config, f, indent=2, ensure_ascii=False)
     print(f'Patched {config_path}')
-elif 'auto_map' not in config:
-    config['auto_map'] = {
-        'AutoConfig': 'configuration_deepseek_v32.DeepseekV32Config',
-        'AutoModelForCausalLM': 'modeling_deepseek_v32.DeepseekV32ForCausalLM',
-    }
-    with open(config_path, 'w') as f:
-        json.dump(config, f, indent=2, ensure_ascii=False)
-    print(f'Added auto_map to {config_path}')
-else:
-    print('Checkpoint already patched, skipping')
 
-# Always ensure rope_theta is at top level (GLM-5 stores it inside rope_parameters)
-if 'rope_theta' not in config:
-    rp = config.get('rope_parameters', {})
-    if isinstance(rp, dict) and 'rope_theta' in rp:
-        config['rope_theta'] = rp['rope_theta']
-    else:
-        config['rope_theta'] = 1000000  # GLM-5 default
-    with open(config_path, 'w') as f:
-        json.dump(config, f, indent=2, ensure_ascii=False)
-    print(f'Added rope_theta={config[\"rope_theta\"]} to {config_path}')
-
-# Create/overwrite stub Python files referenced by auto_map.
-# The HF repo may ship its own stubs (extending DeepseekV3Config from transformers),
-# but transformers v5 does not expose rope_theta as a top-level attribute
-# (it lives inside rope_parameters).  mbridge needs hf_config.rope_theta directly,
-# so we always overwrite the stub with one that promotes rope_theta.
+# Write stub files only if absent (zai-org/GLM-5 doesn't ship them;
+# Pinaster variants already include them).
 config_py = model_dir / 'configuration_deepseek_v32.py'
-config_py.write_text('''from transformers.models.deepseek_v3.configuration_deepseek_v3 import DeepseekV3Config
+if not config_py.exists():
+    config_py.write_text('''from transformers.models.deepseek_v3.configuration_deepseek_v3 import DeepseekV3Config
 
 
 class DeepseekV32Config(DeepseekV3Config):
@@ -166,25 +140,23 @@ class DeepseekV32Config(DeepseekV3Config):
     def __init__(self, index_topk=2048, **kwargs):
         super().__init__(**kwargs)
         self.index_topk = index_topk
-        # Promote rope_theta from rope_parameters to top-level for mbridge
-        if not hasattr(self, \"rope_theta\") or self.rope_theta is None:
-            rp = getattr(self, \"rope_parameters\", None) or {}
-            if isinstance(rp, dict) and \"rope_theta\" in rp:
-                self.rope_theta = rp[\"rope_theta\"]
-            else:
-                self.rope_theta = 1000000  # GLM-5 default
 ''')
-print(f'Wrote {config_py}')
+    print(f'Wrote {config_py}')
+else:
+    print(f'Stub {config_py} already exists, skipping')
 
 modeling_py = model_dir / 'modeling_deepseek_v32.py'
-modeling_py.write_text('''from transformers import PreTrainedModel
+if not modeling_py.exists():
+    modeling_py.write_text('''from transformers import PreTrainedModel
 from .configuration_deepseek_v32 import DeepseekV32Config
 
 
 class DeepseekV32ForCausalLM(PreTrainedModel):
     config_class = DeepseekV32Config
 ''')
-print(f'Wrote {modeling_py}')
+    print(f'Wrote {modeling_py}')
+else:
+    print(f'Stub {modeling_py} already exists, skipping')
 "
 
 # ---------------------------------------------------------------------------
