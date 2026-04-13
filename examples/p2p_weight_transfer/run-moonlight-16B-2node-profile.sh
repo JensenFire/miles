@@ -30,19 +30,17 @@ NODE_RANK="$2"
 HEAD_NODE_IP="$3"
 
 # ---------------------------------------------------------------------------
-# Cleanup stale processes (head node only)
+# Cleanup stale processes (ALL nodes in container env to avoid conflicts)
 # ---------------------------------------------------------------------------
-if [ "$NODE_RANK" -eq 0 ]; then
-    pkill -9 sglang || true
-    sleep 3
-    ray stop --force || true
-    pkill -9 ray || true
-    pkill -9 python || true
-    sleep 3
-    pkill -9 ray || true
-    pkill -9 python || true
-    pkill -9 redis || true
-fi
+pkill -9 sglang || true
+sleep 3
+ray stop --force || true
+pkill -9 ray || true
+pkill -9 python || true
+sleep 3
+pkill -9 ray || true
+pkill -9 python || true
+pkill -9 redis || true
 
 # ---------------------------------------------------------------------------
 # Fixed config
@@ -173,9 +171,11 @@ run_mode() {
 
     # --- Launch Ray ---
     if [ "$NODE_RANK" -eq 0 ]; then
+        RAY_memory_monitor_refresh_ms=0 \
         ray start --head --node-ip-address "${HEAD_NODE_IP}" --num-gpus ${GPUS_PER_NODE} \
             --disable-usage-stats --dashboard-host=0.0.0.0 --dashboard-port=8265
     else
+        RAY_memory_monitor_refresh_ms=0 \
         ray start --address="${HEAD_NODE_IP}:6379" --num-gpus ${GPUS_PER_NODE} --disable-usage-stats
     fi
 
@@ -205,6 +205,16 @@ run_mode() {
         echo "All ${EXPECTED_GPUS} GPUs available. Submitting job."
     fi
 
+    # --- Signal file for worker synchronization (container env) ---
+    # In container environments, worker nodes must stay alive while the
+    # head node runs the Ray job. We use a signal file on shared storage.
+    SIGNAL_DIR="${MILES_LOG_DIR:-/data/ray/signals}"
+    mkdir -p "${SIGNAL_DIR}"
+    DONE_FILE="${SIGNAL_DIR}/job_done_${mode}"
+
+    # Clean up any stale signal file
+    rm -f "${DONE_FILE}"
+
     # --- Submit Ray job (head node only) ---
     if [ "$NODE_RANK" -eq 0 ]; then
         ray job submit --address="http://127.0.0.1:8265" \
@@ -218,6 +228,18 @@ run_mode() {
             ${PERF_ARGS[@]} \
             ${SGLANG_ARGS[@]} \
             ${MISC_ARGS[@]}
+        JOB_EXIT=$?
+        # Signal workers that the job is done
+        echo "${JOB_EXIT}" > "${DONE_FILE}"
+    else
+        # Worker nodes: block until head node signals completion.
+        # In container environments (pyxis/enroot), exiting kills the container
+        # and the Ray worker with it, so we must stay alive.
+        echo "Worker node ${NODE_RANK}: Ray joined, waiting for head to finish..."
+        while [ ! -f "${DONE_FILE}" ]; do
+            sleep 10
+        done
+        echo "Worker node ${NODE_RANK}: head finished (exit=$(cat "${DONE_FILE}")), exiting."
     fi
 }
 
