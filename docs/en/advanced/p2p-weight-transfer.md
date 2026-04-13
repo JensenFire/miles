@@ -44,8 +44,7 @@ P2P weight transfer relies on a unified weight name mapping interface between Me
 
 ## Validated Models
 
-All models below have been validated with `--check-weight-update-equal` in P2P mode
-on the rebased `jd/kimi-glm5-profile` branch (based on `jsf/multi_node_p2p`).
+All models below have been validated with `--check-weight-update-equal` in P2P mode.
 
 | Model | sglang Model Class | Nodes |
 |---|---|---|
